@@ -23,12 +23,14 @@ import {
 //           Firestore Database, Storage (Blaze plan)
 // ------------------------------------------------------------
 const firebaseConfig = {
-  apiKey: "AIzaSyBGLXpkIFCwwIrJyPSH0iOi49RQgD62fbc",
+  apiKey: "AIzaSyBGlXpkIFCwwIrJyPSH0iOi49RQgD62fbc",
   authDomain: "ghost-6488c.firebaseapp.com",
+  databaseURL: "https://ghost-6488c-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "ghost-6488c",
   storageBucket: "ghost-6488c.firebasestorage.app",
   messagingSenderId: "270954952448",
-  appId: "1:270954952448:web:cf875f728d4f5409f4e5e5"
+  appId: "1:270954952448:web:1fc65c210f7e61f7f4e5e5",
+  measurementId: "G-BL4R7M1F7T"
 };
 
 const fbApp = initializeApp(firebaseConfig);
@@ -538,11 +540,6 @@ function renderProfileSetup(){
       <div class="auth-heading">Set up your profile</div>
       <div class="auth-subtext">This is how other QuickChat users will see you.</div>
     </div>
-    <div class="profile-setup-avatar" id="avatarPreviewWrap">
-      <span style="color:var(--text-tertiary);font-size:13px;">Add photo</span>
-      <div class="avatar-edit-badge">${ICONS.camera}</div>
-    </div>
-    <input type="file" id="avatarFileInput" accept="image/*" class="hidden">
     <div class="field-group">
       <label class="field-label">Your name</label>
       <input class="text-input" id="setupUsername" placeholder="Enter your name" maxlength="30">
@@ -555,18 +552,6 @@ function renderProfileSetup(){
     <div class="auth-error" id="setupError"></div>
   </div>`);
 
-  let pendingPhotoBase64 = null;
-
-  qs("#avatarPreviewWrap", wrap).addEventListener("click", ()=> qs("#avatarFileInput", wrap).click());
-  qs("#avatarFileInput", wrap).addEventListener("change", async (ev) => {
-    const file = ev.target.files[0]; if(!file) return;
-    const raw = await fileToBase64(file);
-    const compressed = await compressImage(raw, 500, 0.75);
-    pendingPhotoBase64 = compressed;
-    qs("#avatarPreviewWrap", wrap).innerHTML = `<img src="${compressed}"><div class="avatar-edit-badge">${ICONS.camera}</div>`;
-    qs("#avatarPreviewWrap", wrap).querySelector(".avatar-edit-badge").onclick=(e)=>{e.stopPropagation();qs("#avatarFileInput", wrap).click();};
-  });
-
   qs("#finishSetupBtn", wrap).addEventListener("click", async () => {
     const username = qs("#setupUsername", wrap).value.trim();
     const bio = qs("#setupBio", wrap).value.trim() || "Hey there! I am using QuickChat.";
@@ -575,19 +560,14 @@ function renderProfileSetup(){
     const btn = qs("#finishSetupBtn", wrap);
     btn.disabled = true; btn.innerHTML = `<span class="spinner"></span>`;
     try{
-      let photoURL = "";
-      if(pendingPhotoBase64){
-        photoURL = await uploadImageToStorage(pendingPhotoBase64, `avatars/${state.currentUser.uid}`);
-      }
       const updates = { username, bio };
-      if(photoURL) updates.photoURL = photoURL;
       await updateDoc(doc(db,"users",state.currentUser.uid), updates);
       state.userDoc = { ...state.userDoc, ...updates };
       initLiveListeners();
       goto("main");
     }catch(e){
       console.error(e);
-      errBox.textContent = "Something went wrong. Check your Firebase Storage setup.";
+      errBox.textContent = "Something went wrong. Please try again.";
       btn.disabled = false; btn.textContent = "Get Started";
     }
   });
@@ -994,21 +974,10 @@ function renderEditProfile(){
   const body = el(`<div class="scroll-body" style="padding:24px 20px;"></div>`);
 
   const avatarWrap = el(`
-    <div class="profile-setup-avatar" id="editAvatarWrap" style="cursor:pointer;">
-      ${me.photoURL ? `<img src="${me.photoURL}">` : `<span style="font-size:30px;font-weight:700;color:var(--text-secondary);">${initials(me.username)}</span>`}
-      <div class="avatar-edit-badge">${ICONS.camera}</div>
+    <div class="profile-setup-avatar" id="editAvatarWrap">
+      <span style="font-size:30px;font-weight:700;color:var(--text-secondary);">${initials(me.username)}</span>
     </div>`);
   body.appendChild(avatarWrap);
-  const fileInput = el(`<input type="file" accept="image/*" class="hidden" id="editAvatarFile">`);
-  body.appendChild(fileInput);
-  let newPhotoBase64 = null;
-  avatarWrap.addEventListener("click", ()=> fileInput.click());
-  fileInput.addEventListener("change", async (ev) => {
-    const f = ev.target.files[0]; if(!f) return;
-    const raw = await fileToBase64(f);
-    newPhotoBase64 = await compressImage(raw, 500, 0.75);
-    avatarWrap.innerHTML = `<img src="${newPhotoBase64}"><div class="avatar-edit-badge">${ICONS.camera}</div>`;
-  });
 
   body.appendChild(el(`
     <div class="field-group" style="margin-top:20px;">
@@ -1034,16 +1003,13 @@ function renderEditProfile(){
     saveBtn.disabled = true; saveBtn.innerHTML = `<span class="spinner"></span>`;
     try{
       const updates = { username, bio };
-      if(newPhotoBase64){
-        updates.photoURL = await uploadImageToStorage(newPhotoBase64, `avatars/${state.currentUser.uid}`);
-      }
       await updateDoc(doc(db,"users",state.currentUser.uid), updates);
       showToast("Profile updated");
       state.activeNav = "settings";
       goto("main");
     }catch(e){
       console.error(e);
-      showToast("Failed to save. Check Firebase Storage setup.");
+      showToast("Failed to save. Please try again.");
       saveBtn.disabled = false; saveBtn.textContent = "Save changes";
     }
   });
@@ -1313,8 +1279,6 @@ function renderChatWindow(){
       <button class="composer-icon-btn" id="emojiToggleBtn">${ICONS.emoji}</button>
       <div class="composer-input-wrap">
         <textarea class="composer-textarea" id="msgInput" placeholder="${isBlocked ? 'You blocked this user' : 'Type a message'}" rows="1" ${isBlocked?'disabled':''}></textarea>
-        <button class="composer-icon-btn" id="attachBtn" ${isBlocked?'disabled':''}>${ICONS.attach}</button>
-        <input type="file" id="imgFileInput" accept="image/*" class="hidden">
       </div>
       <button class="send-btn" id="sendBtn" ${isBlocked?'disabled':''}>${ICONS.send}</button>
     </div>`);
@@ -1344,26 +1308,6 @@ function renderChatWindow(){
     setTyping(state.activeChatId, uid, textarea.value.length>0);
     clearTimeout(state.typingTimeout);
     state.typingTimeout = setTimeout(()=> setTyping(state.activeChatId, uid, false), 2000);
-  });
-
-  // ---- image attach
-  qs("#attachBtn",composer)?.addEventListener("click", () => qs("#imgFileInput",composer).click());
-  qs("#imgFileInput",composer)?.addEventListener("change", async (ev) => {
-    const file = ev.target.files[0]; if(!file) return;
-    const raw = await fileToBase64(file);
-    const compressed = await compressImage(raw, 1000, 0.75);
-    state.selectedImageBase64 = compressed;
-    state.selectedImagePreview = compressed;
-    attachBar.classList.remove("hidden");
-    attachBar.innerHTML = `
-      <img src="${compressed}">
-      <div class="attach-info">Photo ready to send</div>
-      <div class="attach-cancel" id="cancelAttachBtn">Remove</div>`;
-    qs("#cancelAttachBtn",attachBar).addEventListener("click", ()=>{
-      state.selectedImageBase64=null; state.selectedImagePreview=null;
-      attachBar.classList.add("hidden"); attachBar.innerHTML="";
-      qs("#imgFileInput",composer).value = "";
-    });
   });
 
   // ---- send
